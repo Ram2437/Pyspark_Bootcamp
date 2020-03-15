@@ -4,14 +4,13 @@ try:
     from pyspark import SparkContext, SparkConf
 
     props = cp.RawConfigParser()
-    props.read("src/main/Resources/application.properties")
+    props.read(r"src/main/Resources/application.properties")
 
     conf = SparkConf().\
         setAppName("Total Revenue per day").\
         setMaster(props.get(sys.argv[5],'executionMode'))
 
     sc = SparkContext(conf=conf)
-    sc.setLogLevel("INFO")
     # Total 5 arguments: input base dir, output base dir, local dir, month, environment
     InputPath = sys.argv[1]
     OutputPath = sys.argv[2]
@@ -49,7 +48,7 @@ try:
         #After Map; (order_item_product_id, order_item_subTotal)
 
         order_items_count = sc.accumulator(0)  # ACCUMULATORS to get the count of order_items_tuples
-        def getProductIdAndRevenue(x):         # Named function to call it in map
+        def getProductIdAndRevenue(x):                         #Named function to call it in map
             order_items_count.add(1)
             return x[1][0]
 
@@ -65,28 +64,29 @@ try:
             reduceByKey(lambda total, orderid: total + orderid)
             #reduceby key gives, (order_item_product_id, product_revenue)
 
-        #We need to read products data from local file system
         localDir = sys.argv[4]
         ProductFile = open(localDir + "/products/part-00000")
         products = ProductFile.read().splitlines()
 
-        #Convert products into DICTS and broadcast
-        # use revenue_by_productId and apply map (as part of lambda in map we will do lookup into broadcast variable)
-        #after Join; (product_id, (product_name, product_revenue))
-
-        products_dict = dict(map(lambda p: (int(p.split(',')[0]), p.split(',')[2]), products))
-        broadcast_variable = sc.broadcast(products_dict)
-        revenue_by_productId.map(lambda productRevenue:broadcast_variable.value[productRevenue[0]] + "\t" + str(productRevenue[1])
-                    ). \
-        saveAsTextFile(OutputPath)
-            # take(10):
-            # print(i)
-
-        # print(orders_count)
-
+        # Convert products into RDD by (sc.parallelize) and extract prod_id and prod_name
+        # after map; we get (product_id, product_revenue)
+        # after Join; (product_id, (product_name, product_revenue))
+        sc.parallelize(products).\
+            map(lambda product: (int(product.split(',')[0]), product.split(',')[2])).\
+            join(revenue_by_productId).\
+            map(lambda product: product[1][0] + "\t" + str(product[1][1])).\
+            saveAsTextFile(OutputPath)
 
 except ImportError as e:
     print("Cannot import Spark modules", e)
     sys.exit(1)
 
-# after adding SSH KEY
+
+'''
+/Users/ramakrishnanimmathota/Research/Bootcamp/Local_ip 
+/Users/ramakrishnanimmathota/Research/Bootcamp/Local_op/Revenue_Per_Product_For_Month 
+2013-08 
+/Users/ramakrishnanimmathota/Research/Bootcamp/Local_ip 
+dev
+'''
+# /Users/ramakrishnanimmathota/PycharmProjects/pyspark_bootcamp
